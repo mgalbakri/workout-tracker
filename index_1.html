@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Longevity">
+  <meta name="theme-color" content="#fafaf9">
+  <title>Longevity Tracker</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    * { -webkit-tap-highlight-color: transparent; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+  </style>
+</head>
+<body class="bg-stone-50">
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    // ============================================
+    // SUPABASE CONFIGURATION
+    // ============================================
+    const SUPABASE_URL = 'https://onfgvhrkrzacyvllwdgn.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9uZmd2aHJrcnphY3l2bGx3ZGduIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgzMjcxMDQsImV4cCI6MjA4MzkwMzEwNH0.0fFIFNLNZnh2YaiJO3RNnQcp7OvNrcoTT0GNdn_UtP4';
+
+    const supabase = {
+      from: (table) => ({
+        select: (columns = '*') => ({
+          eq: (column, value) => ({
+            order: (col, { ascending = true } = {}) => ({
+              async then(resolve) {
+                try {
+                  const res = await fetch(
+                    `${SUPABASE_URL}/rest/v1/${table}?select=${columns}&${column}=eq.${value}&order=${col}.${ascending ? 'asc' : 'desc'}`,
+                    { headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` }}
+                  );
+                  const data = await res.json();
+                  resolve({ data, error: res.ok ? null : data });
+                } catch (error) { resolve({ data: null, error }); }
+              }
+            }),
+            async then(resolve) {
+              try {
+                const res = await fetch(
+                  `${SUPABASE_URL}/rest/v1/${table}?select=${columns}&${column}=eq.${value}`,
+                  { headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` }}
+                );
+                const data = await res.json();
+                resolve({ data, error: res.ok ? null : data });
+              } catch (error) { resolve({ data: null, error }); }
+            }
+          })
+        }),
+        upsert: async (record, { onConflict } = {}) => {
+          try {
+            const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
+              method: 'POST',
+              headers: {
+                'apikey': SUPABASE_ANON_KEY,
+                'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+                'Content-Type': 'application/json',
+                'Prefer': 'resolution=merge-duplicates'
+              },
+              body: JSON.stringify(record)
+            });
+            const data = res.ok ? null : await res.json();
+            return { data: null, error: res.ok ? null : data };
+          } catch (error) { return { data: null, error }; }
+        },
+        insert: async (record) => {
+          try {
+            const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
+              method: 'POST',
+              headers: {
+                'apikey': SUPABASE_ANON_KEY,
+                'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+                'Content-Type': 'application/json',
+                'Prefer': 'return=minimal'
+              },
+              body: JSON.stringify(record)
+            });
+            const data = res.ok ? null : await res.json();
+            return { data: null, error: res.ok ? null : data };
+          } catch (error) { return { data: null, error }; }
+        }
+      })
+    };
+
+    const getUserId = () => {
+      let userId = localStorage.getItem('workout_user_id');
+      if (!userId) {
+        userId = 'user_' + Math.random().toString(36).substr(2, 9);
+        localStorage.setItem('workout_user_id', userId);
+      }
+      return userId;
+    };
+
+    // Utility Functions
+    const getProgramWeek = (workouts) => {
+      const dates = Object.keys(workouts).sort();
+      if (dates.length === 0) return null;
+      const firstWorkoutDate = new Date(dates[0]);
+      const today = new Date();
+      const diffTime = today - firstWorkoutDate;
+      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+      return Math.floor(diffDays / 7) + 1;
+    };
+
+    const formatDate = (date) => {
+      return new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    };
+
+    const getMonday = (d) => {
+      const date = new Date(d);
+      const day = date.getDay();
+      const diff = date.getDate() - day + (day === 0 ? -6 : 1);
+      return new Date(date.setDate(diff));
+    };
+
+    // Program Data
+    const PROGRAM = {
+      1: {
+        name: "Strength",
+        identity: "Force Production",
+        color: "#E07A5F",
+        warmup: ["Cat-Camel × 10", "90/90 Hip Switches × 12/side", "Ankle Wall Mobilization × 12/side", "Glute Bridge × 12", "Hip CARs × 5/side", "Scapular Pull-Ups × 6-8", "3 nasal breaths"],
+        exercises: [
+          { name: "Belt Squat / Landmine Hack Squat", sets: "3×6-8", rest: "3 min", note: "RPE 7-8" },
+          { name: "Chest-Supported Row Machine", sets: "3×8-10", rest: "2 min", note: "Full ROM" },
+          { name: "Machine Chest Press", sets: "3×8-10", rest: "2 min", note: "Control eccentric" },
+          { name: "Face Pulls (rope)", sets: "3×15", rest: "90s", note: "Light, feel it" },
+          { name: "Farmer Carry", sets: "3×40m", rest: "90s", note: "Heavy as form allows" }
+        ],
+        finisher: "Zone 2 Row: 15-20 min @ 128-135 bpm"
+      },
+      2: {
+        name: "Cardio",
+        identity: "Aerobic Base",
+        color: "#3D5A80",
+        warmup: ["Leg swings × 10/side", "Walking lunges × 10", "Arm circles × 20", "Light rowing × 3 min"],
+        exercises: [{ name: "5K Row", sets: "1", rest: "-", note: "Target: 35:00, HR 128-135" }],
+        finisher: "Stretch: hip flexors, hamstrings, shoulders"
+      },
+      3: {
+        name: "Posterior",
+        identity: "Pull Strength",
+        color: "#81B29A",
+        warmup: ["Cat-Camel × 10", "Bird-Dog × 8/side", "Hip CARs × 5/side", "Band Pull-Aparts × 15", "Dead Hang × 30s", "3 nasal breaths"],
+        exercises: [
+          { name: "Trap Bar Deadlift", sets: "3×5", rest: "3-4 min", note: "RPE 7-8, brace hard" },
+          { name: "Lat Pulldown (neutral)", sets: "3×8-10", rest: "2 min", note: "Pause at bottom" },
+          { name: "Incline DB Curl", sets: "2×12-15", rest: "90s", note: "Stretch at bottom" },
+          { name: "Cable Woodchop", sets: "2×12/side", rest: "60s", note: "Anti-rotation focus" },
+          { name: "Dead Hang", sets: "3× max", rest: "60s", note: "Decompress spine" }
+        ],
+        finisher: "Zone 2 Row: 15-20 min @ 128-135 bpm"
+      },
+      4: {
+        name: "Recovery",
+        identity: "Mobility & Flow",
+        color: "#F2CC8F",
+        warmup: ["Box breathing × 5 cycles"],
+        exercises: [
+          { name: "Foam Roll Full Body", sets: "10 min", rest: "-", note: "Slow, breathe" },
+          { name: "90/90 Stretch", sets: "2 min/side", rest: "-", note: "Relax into it" },
+          { name: "Couch Stretch", sets: "2 min/side", rest: "-", note: "Hip flexor focus" },
+          { name: "Thread the Needle", sets: "10/side", rest: "-", note: "Thoracic rotation" },
+          { name: "Supine Spinal Twist", sets: "2 min/side", rest: "-", note: "Let gravity work" },
+          { name: "Legs Up Wall", sets: "5-10 min", rest: "-", note: "Nasal breathing" }
+        ],
+        finisher: "Optional: Light walk or Zone 2 for 20-30 min"
+      }
+    };
+
+    const BENCHMARKS = [
+      { id: "5k_row", name: "5K Row", unit: "mm:ss", target: "35:00", description: "All-out effort" },
+      { id: "2k_row", name: "2K Row", unit: "mm:ss", description: "Max effort" },
+      { id: "10min_row", name: "10-Min Row", unit: "meters", description: "Max distance" },
+      { id: "dead_hang", name: "Dead Hang", unit: "seconds", description: "Max time" },
+      { id: "farmer_carry", name: "Farmer Carry", unit: "meters", description: "60s, max distance" },
+      { id: "trap_bar_dl", name: "Trap Bar DL", unit: "kg", description: "5RM @ RPE 8" },
+      { id: "pull_ups", name: "Pull-Ups", unit: "reps", description: "Max reps" },
+      { id: "plank", name: "Plank", unit: "seconds", description: "Max hold" },
+    ];
+
+    const SORENESS_AREAS = ["Neck/Traps", "Shoulders", "Chest", "Upper Back", "Lower Back", "Glutes/Hips", "Quads", "Hamstrings"];
+
+    // Benchmark Card Component
+    const BenchmarkCard = ({ bench, history, onSave }) => {
+      const [inputValue, setInputValue] = useState('');
+      const latest = history[history.length - 1];
+      
+      return (
+        <div className="bg-white rounded-2xl p-5 shadow-sm border border-stone-100">
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <h4 className="text-xl font-semibold text-stone-800">{bench.name}</h4>
+              <p className="text-stone-500 text-base">{bench.description}</p>
+              {bench.target && <p className="text-emerald-600 font-medium mt-1">Target: {bench.target}</p>}
+            </div>
+            {latest && (
+              <div className="text-right">
+                <p className="text-3xl font-bold text-stone-800">{latest.value}</p>
+                <p className="text-stone-400 text-sm">{formatDate(latest.recorded_at)}</p>
+              </div>
+            )}
+          </div>
+          <div className="flex gap-3">
+            <input
+              type="text"
+              placeholder={bench.unit}
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              className="flex-1 px-4 py-3 text-lg rounded-xl border-2 border-stone-200 focus:border-emerald-400 focus:outline-none"
+            />
+            <button
+              onClick={() => { if (inputValue) { onSave(bench.id, inputValue); setInputValue(''); }}}
+              className="px-6 py-3 bg-emerald-500 text-white font-semibold rounded-xl active:scale-95 transition-transform"
+            >Log</button>
+          </div>
+          {history.length > 1 && (
+            <div className="mt-4 pt-4 border-t border-stone-100">
+              <p className="text-sm text-stone-400 mb-2">History</p>
+              <div className="flex gap-4 overflow-x-auto pb-2">
+                {history.slice(-6).map((entry, i) => (
+                  <div key={i} className="text-center min-w-fit">
+                    <p className="font-semibold text-stone-700">{entry.value}</p>
+                    <p className="text-stone-400 text-sm">{formatDate(entry.recorded_at)}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    };
+
+    // Main App
+    function App() {
+      const [activeTab, setActiveTab] = useState('log');
+      const [selectedDay, setSelectedDay] = useState(1);
+      const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+      const [workouts, setWorkouts] = useState({});
+      const [biometrics, setBiometrics] = useState({});
+      const [benchmarks, setBenchmarks] = useState({});
+      const [todayBiometrics, setTodayBiometrics] = useState({ weight: '', hrv: '', restingHR: '', sleep: '', soreness: {} });
+      const [exerciseData, setExerciseData] = useState({});
+      const [toast, setToast] = useState(null);
+      const [isLoading, setIsLoading] = useState(true);
+      const [syncStatus, setSyncStatus] = useState('synced');
+
+      const userId = getUserId();
+
+      // Load Data
+      useEffect(() => {
+        const loadData = async () => {
+          setIsLoading(true);
+          try {
+            const { data: workoutData } = await supabase.from('workouts').select('*').eq('user_id', userId);
+            const workoutMap = {};
+            workoutData?.forEach(w => { workoutMap[w.date] = { day: w.day_number, exercises: w.exercises || {}, completedAt: w.completed_at }; });
+            setWorkouts(workoutMap);
+
+            const { data: bioData } = await supabase.from('biometrics').select('*').eq('user_id', userId);
+            const bioMap = {};
+            bioData?.forEach(b => { bioMap[b.date] = { weight: b.weight, hrv: b.hrv, restingHR: b.resting_hr, sleep: b.sleep, soreness: b.soreness || {} }; });
+            setBiometrics(bioMap);
+
+            const { data: benchData } = await supabase.from('benchmarks').select('*').eq('user_id', userId).order('recorded_at', { ascending: true });
+            const benchMap = {};
+            benchData?.forEach(b => { if (!benchMap[b.benchmark_id]) benchMap[b.benchmark_id] = []; benchMap[b.benchmark_id].push({ value: b.value, recorded_at: b.recorded_at }); });
+            setBenchmarks(benchMap);
+            setSyncStatus('synced');
+          } catch (error) { console.error('Load error:', error); setSyncStatus('error'); }
+          setIsLoading(false);
+        };
+        loadData();
+      }, [userId]);
+
+      useEffect(() => {
+        const currentWorkout = workouts[selectedDate];
+        if (currentWorkout) { setExerciseData(currentWorkout.exercises || {}); setSelectedDay(currentWorkout.day); }
+        else { setExerciseData({}); }
+      }, [selectedDate, workouts]);
+
+      useEffect(() => {
+        const todayData = biometrics[selectedDate];
+        if (todayData) { setTodayBiometrics({ weight: todayData.weight || '', hrv: todayData.hrv || '', restingHR: todayData.restingHR || '', sleep: todayData.sleep || '', soreness: todayData.soreness || {} }); }
+        else { setTodayBiometrics({ weight: '', hrv: '', restingHR: '', sleep: '', soreness: {} }); }
+      }, [selectedDate, biometrics]);
+
+      const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2500); };
+
+      const handleSaveWorkout = async () => {
+        setSyncStatus('syncing');
+        try {
+          await supabase.from('workouts').upsert({ user_id: userId, date: selectedDate, day_number: selectedDay, exercises: exerciseData, completed_at: new Date().toISOString() }, { onConflict: 'user_id,date' });
+          setWorkouts(prev => ({ ...prev, [selectedDate]: { day: selectedDay, exercises: exerciseData, completedAt: new Date().toISOString() }}));
+          setSyncStatus('synced'); showToast('Workout saved! 💪');
+        } catch (error) { setSyncStatus('error'); showToast('Error saving ❌'); }
+      };
+
+      const handleSaveBiometrics = async () => {
+        setSyncStatus('syncing');
+        try {
+          await supabase.from('biometrics').upsert({ user_id: userId, date: selectedDate, weight: todayBiometrics.weight || null, hrv: todayBiometrics.hrv || null, resting_hr: todayBiometrics.restingHR || null, sleep: todayBiometrics.sleep || null, soreness: todayBiometrics.soreness }, { onConflict: 'user_id,date' });
+          setBiometrics(prev => ({ ...prev, [selectedDate]: { ...todayBiometrics }}));
+          setSyncStatus('synced'); showToast('Biometrics logged! 📊');
+        } catch (error) { setSyncStatus('error'); showToast('Error saving ❌'); }
+      };
+
+      const handleSaveBenchmark = async (benchmarkId, value) => {
+        setSyncStatus('syncing');
+        try {
+          await supabase.from('benchmarks').insert({ user_id: userId, benchmark_id: benchmarkId, value: value, recorded_at: new Date().toISOString() });
+          setBenchmarks(prev => ({ ...prev, [benchmarkId]: [...(prev[benchmarkId] || []), { value, recorded_at: new Date().toISOString() }]}));
+          setSyncStatus('synced'); showToast('Benchmark recorded! 🎯');
+        } catch (error) { setSyncStatus('error'); showToast('Error saving ❌'); }
+      };
+
+      const getReadinessScore = () => {
+        const today = biometrics[selectedDate];
+        if (!today) return null;
+        let score = 70;
+        if (today.hrv) { const hrvValues = Object.values(biometrics).filter(b => b.hrv).map(b => parseFloat(b.hrv)); const avgHRV = hrvValues.length > 0 ? hrvValues.reduce((a, b) => a + b, 0) / hrvValues.length : parseFloat(today.hrv); score += (parseFloat(today.hrv) - avgHRV) * 0.5; }
+        if (today.sleep) score += (parseFloat(today.sleep) - 7) * 5;
+        const sorenessCount = Object.values(today.soreness || {}).filter(v => v >= 3).length;
+        score -= sorenessCount * 3;
+        return Math.max(0, Math.min(100, Math.round(score)));
+      };
+
+      const isDeloadWeek = () => { const weekNum = getProgramWeek(workouts); if (!weekNum) return false; return weekNum % 5 === 0; };
+
+      const getWeeklyCompletion = () => {
+        const weeks = [];
+        for (let i = 3; i >= 0; i--) {
+          const weekStart = getMonday(new Date(Date.now() - i * 7 * 24 * 60 * 60 * 1000));
+          const days = []; let completedCount = 0;
+          for (let d = 0; d < 7; d++) {
+            const date = new Date(weekStart); date.setDate(date.getDate() + d);
+            const dateStr = date.toISOString().split('T')[0];
+            const workout = workouts[dateStr];
+            if (workout) completedCount++;
+            days.push({ date: dateStr, completed: !!workout, day: workout?.day });
+          }
+          weeks.push({ weekStart: formatDate(weekStart), days, completedCount });
+        }
+        return weeks;
+      };
+
+      const program = PROGRAM[selectedDay];
+      const readiness = getReadinessScore();
+
+      if (isLoading) {
+        return (
+          <div className="min-h-screen bg-stone-50 flex items-center justify-center">
+            <div className="text-center">
+              <div className="w-16 h-16 border-4 border-emerald-200 border-t-emerald-500 rounded-full animate-spin mx-auto mb-4" />
+              <p className="text-stone-500 text-lg">Syncing with cloud...</p>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div className="min-h-screen bg-stone-50">
+          {toast && <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-stone-800 text-white px-6 py-3 rounded-full shadow-lg text-lg font-medium">{toast}</div>}
+
+          <header className="bg-white border-b border-stone-200 sticky top-0 z-40">
+            <div className="max-w-lg mx-auto px-4 py-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h1 className="text-2xl font-bold text-stone-800">Longevity</h1>
+                    <span className={`w-2 h-2 rounded-full ${syncStatus === 'synced' ? 'bg-emerald-500' : syncStatus === 'syncing' ? 'bg-amber-500 animate-pulse' : 'bg-red-500'}`} />
+                  </div>
+                  <p className="text-stone-500">
+                    {getProgramWeek(workouts) ? <>Week {getProgramWeek(workouts)} {isDeloadWeek() && <span className="text-amber-500 font-medium"> • Deload</span>}</> : 'Log your first workout to start'}
+                    <span className="text-emerald-500 text-sm ml-2">☁️</span>
+                  </p>
+                </div>
+                {readiness && <div className={`w-14 h-14 rounded-full flex items-center justify-center text-xl font-bold text-white ${readiness >= 80 ? 'bg-emerald-500' : readiness >= 60 ? 'bg-amber-500' : 'bg-rose-500'}`}>{readiness}</div>}
+              </div>
+            </div>
+          </header>
+
+          <nav className="bg-white border-b border-stone-200 sticky top-[73px] z-30">
+            <div className="max-w-lg mx-auto px-2">
+              <div className="flex">
+                {[{ id: 'log', label: 'Log', icon: '✏️' }, { id: 'dashboard', label: 'Stats', icon: '📊' }, { id: 'biometrics', label: 'Bio', icon: '❤️' }, { id: 'benchmarks', label: 'Tests', icon: '🎯' }].map(tab => (
+                  <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex-1 py-4 text-center transition-colors ${activeTab === tab.id ? 'text-emerald-600 border-b-2 border-emerald-500 font-semibold' : 'text-stone-400'}`}>
+                    <span className="text-xl block">{tab.icon}</span>
+                    <span className="text-sm">{tab.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </nav>
+
+          <main className="max-w-lg mx-auto px-4 py-6 pb-24">
+            {activeTab === 'log' && (
+              <div className="space-y-6">
+                <div className="bg-white rounded-2xl p-4 shadow-sm">
+                  <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="w-full text-xl font-medium text-stone-800 bg-transparent focus:outline-none" />
+                </div>
+
+                <div className="grid grid-cols-4 gap-3">
+                  {[1, 2, 3, 4].map(day => (
+                    <button key={day} onClick={() => setSelectedDay(day)} className={`py-4 rounded-2xl text-center transition-all ${selectedDay === day ? 'text-white shadow-lg scale-105' : 'bg-white text-stone-600 shadow-sm'}`} style={selectedDay === day ? { backgroundColor: PROGRAM[day].color } : {}}>
+                      <span className="text-2xl font-bold block">{day}</span>
+                      <span className="text-sm opacity-80">{PROGRAM[day].name}</span>
+                    </button>
+                  ))}
+                </div>
+
+                <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+                  <div className="p-5" style={{ backgroundColor: program.color }}>
+                    <h2 className="text-2xl font-bold text-white">{program.name}</h2>
+                    <p className="text-white/80">{program.identity}</p>
+                  </div>
+
+                  <div className="p-5 border-b border-stone-100">
+                    <h3 className="text-lg font-semibold text-stone-800 mb-3">🔥 Warm-Up</h3>
+                    <div className="space-y-2">{program.warmup.map((item, i) => <p key={i} className="text-stone-600 text-base">{item}</p>)}</div>
+                  </div>
+
+                  <div className="p-5">
+                    <h3 className="text-lg font-semibold text-stone-800 mb-4">💪 Exercises</h3>
+                    <div className="space-y-6">
+                      {program.exercises.map((ex, i) => (
+                        <div key={i} className="border-l-4 pl-4" style={{ borderColor: program.color }}>
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <h4 className="text-lg font-medium text-stone-800">{ex.name}</h4>
+                              <p className="text-stone-500">{ex.sets} • Rest {ex.rest}</p>
+                              {ex.note && <p className="text-emerald-600 text-sm mt-1">{ex.note}</p>}
+                            </div>
+                            <input type="checkbox" checked={exerciseData[ex.name]?.completed || false} onChange={(e) => setExerciseData(prev => ({ ...prev, [ex.name]: { ...prev[ex.name], completed: e.target.checked }}))} className="w-7 h-7 rounded-lg accent-emerald-500 mt-1" />
+                          </div>
+                          <div className="flex gap-3 mt-3">
+                            <input type="number" placeholder="Weight (kg)" value={exerciseData[ex.name]?.weight || ''} onChange={(e) => setExerciseData(prev => ({ ...prev, [ex.name]: { ...prev[ex.name], weight: e.target.value }}))} className="flex-1 px-4 py-3 text-base rounded-xl border-2 border-stone-200 focus:border-emerald-400 focus:outline-none" />
+                            <input type="number" placeholder="Reps" value={exerciseData[ex.name]?.reps || ''} onChange={(e) => setExerciseData(prev => ({ ...prev, [ex.name]: { ...prev[ex.name], reps: e.target.value }}))} className="w-24 px-4 py-3 text-base rounded-xl border-2 border-stone-200 focus:border-emerald-400 focus:outline-none" />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {program.finisher && <div className="p-5 bg-stone-50 border-t border-stone-100"><p className="text-stone-600 text-base">🏁 <span className="font-medium">{program.finisher}</span></p></div>}
+                </div>
+
+                <button onClick={handleSaveWorkout} disabled={syncStatus === 'syncing'} className="w-full py-4 rounded-2xl text-xl font-bold text-white shadow-lg active:scale-98 transition-transform disabled:opacity-50" style={{ backgroundColor: program.color }}>
+                  {syncStatus === 'syncing' ? 'Saving...' : 'Save Workout'}
+                </button>
+              </div>
+            )}
+
+            {activeTab === 'dashboard' && (
+              <div className="space-y-6">
+                <div className="bg-white rounded-2xl p-5 shadow-sm">
+                  <h3 className="text-lg font-semibold text-stone-800 mb-4">📅 Weekly Progress</h3>
+                  <div className="space-y-4">
+                    {getWeeklyCompletion().map((week, wi) => (
+                      <div key={wi} className="flex items-center gap-3">
+                        <span className="text-stone-400 text-sm w-16">{week.weekStart}</span>
+                        <div className="flex gap-1 flex-1">
+                          {week.days.map((day, di) => (
+                            <div key={di} className={`w-9 h-9 rounded-lg flex items-center justify-center text-sm font-semibold ${day.completed ? 'text-white' : 'bg-stone-100 text-stone-300'}`} style={day.completed ? { backgroundColor: PROGRAM[day.day]?.color } : {}}>
+                              {day.completed ? day.day : '·'}
+                            </div>
+                          ))}
+                        </div>
+                        <span className={`font-bold text-lg w-8 text-right ${week.completedCount >= 4 ? 'text-emerald-500' : 'text-stone-400'}`}>{week.completedCount}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-2xl p-5 shadow-sm">
+                  <h3 className="text-lg font-semibold text-stone-800 mb-4">🕐 Recent</h3>
+                  <div className="space-y-3">
+                    {Object.entries(workouts).sort((a, b) => new Date(b[0]) - new Date(a[0])).slice(0, 8).map(([date, workout]) => (
+                      <div key={date} className="flex items-center justify-between py-2">
+                        <div className="flex items-center gap-3">
+                          <span className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold" style={{ backgroundColor: PROGRAM[workout.day]?.color }}>{workout.day}</span>
+                          <span className="text-stone-700 font-medium">{PROGRAM[workout.day]?.name}</span>
+                        </div>
+                        <span className="text-stone-400">{formatDate(date)}</span>
+                      </div>
+                    ))}
+                    {Object.keys(workouts).length === 0 && <p className="text-stone-400 text-center py-8">No workouts logged yet</p>}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'biometrics' && (
+              <div className="space-y-6">
+                <div className="bg-white rounded-2xl p-5 shadow-sm space-y-6">
+                  <h3 className="text-lg font-semibold text-stone-800">📋 Daily Check-In</h3>
+                  <div>
+                    <label className="text-stone-500 text-base block mb-2">Body Weight (kg)</label>
+                    <input type="number" step="0.1" value={todayBiometrics.weight} onChange={(e) => setTodayBiometrics(prev => ({ ...prev, weight: e.target.value }))} placeholder="e.g. 75.5" className="w-full px-4 py-4 text-xl rounded-xl border-2 border-stone-200 focus:border-emerald-400 focus:outline-none" />
+                  </div>
+                  <div>
+                    <label className="text-stone-500 text-base block mb-2">HRV (ms)</label>
+                    <input type="number" value={todayBiometrics.hrv} onChange={(e) => setTodayBiometrics(prev => ({ ...prev, hrv: e.target.value }))} placeholder="e.g. 45" className="w-full px-4 py-4 text-xl rounded-xl border-2 border-stone-200 focus:border-emerald-400 focus:outline-none" />
+                  </div>
+                  <div>
+                    <label className="text-stone-500 text-base block mb-2">Resting HR (bpm)</label>
+                    <input type="number" value={todayBiometrics.restingHR} onChange={(e) => setTodayBiometrics(prev => ({ ...prev, restingHR: e.target.value }))} placeholder="e.g. 58" className="w-full px-4 py-4 text-xl rounded-xl border-2 border-stone-200 focus:border-emerald-400 focus:outline-none" />
+                  </div>
+                  <div>
+                    <label className="text-stone-500 text-base block mb-2">Sleep (hours)</label>
+                    <input type="number" step="0.5" value={todayBiometrics.sleep} onChange={(e) => setTodayBiometrics(prev => ({ ...prev, sleep: e.target.value }))} placeholder="e.g. 7.5" className="w-full px-4 py-4 text-xl rounded-xl border-2 border-stone-200 focus:border-emerald-400 focus:outline-none" />
+                  </div>
+                  <div>
+                    <label className="text-stone-500 text-base block mb-3">Soreness (1-5)</label>
+                    <div className="grid grid-cols-2 gap-3">
+                      {SORENESS_AREAS.map(area => (
+                        <div key={area} className="flex items-center justify-between bg-stone-50 rounded-xl px-4 py-3">
+                          <span className="text-stone-700">{area}</span>
+                          <select value={todayBiometrics.soreness[area] || ''} onChange={(e) => setTodayBiometrics(prev => ({ ...prev, soreness: { ...prev.soreness, [area]: e.target.value }}))} className="w-16 text-center py-2 rounded-lg border-2 border-stone-200 focus:border-emerald-400 focus:outline-none text-lg font-medium">
+                            <option value="">-</option>
+                            {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n}</option>)}
+                          </select>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <button onClick={handleSaveBiometrics} disabled={syncStatus === 'syncing'} className="w-full py-4 bg-emerald-500 text-white text-xl font-bold rounded-xl active:scale-98 transition-transform disabled:opacity-50">
+                    {syncStatus === 'syncing' ? 'Saving...' : 'Save Biometrics'}
+                  </button>
+                </div>
+
+                <div className="bg-white rounded-2xl p-5 shadow-sm">
+                  <h3 className="text-lg font-semibold text-stone-800 mb-4">📊 Recent Data</h3>
+                  <div className="space-y-3">
+                    {Object.entries(biometrics).sort((a, b) => new Date(b[0]) - new Date(a[0])).slice(0, 7).map(([date, data]) => (
+                      <div key={date} className="flex items-center justify-between py-2 border-b border-stone-100 last:border-0">
+                        <span className="text-stone-500">{formatDate(date)}</span>
+                        <div className="flex gap-4 text-base">
+                          {data.weight && <span className="text-stone-700">{data.weight} kg</span>}
+                          {data.hrv && <span className="text-emerald-600">HRV {data.hrv}</span>}
+                          {data.sleep && <span className="text-blue-500">{data.sleep}h</span>}
+                        </div>
+                      </div>
+                    ))}
+                    {Object.keys(biometrics).length === 0 && <p className="text-stone-400 text-center py-4">No biometrics logged yet</p>}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'benchmarks' && (
+              <div className="space-y-6">
+                <div className="bg-amber-50 rounded-2xl p-4 flex items-center gap-3 border border-amber-200">
+                  <span className="text-2xl">📌</span>
+                  <p className="text-amber-800">Run benchmarks <span className="font-semibold">last week of each month</span> (before deload)</p>
+                </div>
+                {BENCHMARKS.map(bench => <BenchmarkCard key={bench.id} bench={bench} history={benchmarks[bench.id] || []} onSave={handleSaveBenchmark} />)}
+              </div>
+            )}
+          </main>
+
+          <footer className="fixed bottom-0 left-0 right-0 bg-white border-t border-stone-200 py-3 px-4">
+            <div className="max-w-lg mx-auto flex items-center justify-center gap-4 text-stone-400 text-sm">
+              <span>Zone 2: 128-135 bpm</span><span>•</span><span>Deload: Week 5</span><span>•</span><span>Age: 43</span>
+            </div>
+          </footer>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
