@@ -4,23 +4,83 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Longevity">
-  <meta name="theme-color" content="#fafaf9">
-  <title>Longevity Tracker</title>
+  <meta name="theme-color" content="#1a1a1a">
+  <title>Longevity</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            serif: ['Instrument Serif', 'Georgia', 'serif'],
+            sans: ['DM Sans', 'system-ui', 'sans-serif'],
+          },
+          colors: {
+            ink: '#1a1a1a',
+            paper: '#f8f7f4',
+            clay: '#e8e6e1',
+            sage: '#7d8c7d',
+            rust: '#c4775a',
+            slate: '#6b7280',
+          }
+        }
+      }
+    }
+  </script>
   <style>
     * { -webkit-tap-highlight-color: transparent; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    body { font-family: 'DM Sans', sans-serif; background: #f8f7f4; }
+    .font-serif { font-family: 'Instrument Serif', Georgia, serif; }
+    input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0.5; }
+    .fade-in { animation: fadeIn 0.4s ease-out; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    .quote-fade { animation: quoteFade 0.6s ease-out; }
+    @keyframes quoteFade { from { opacity: 0; } to { opacity: 1; } }
   </style>
 </head>
-<body class="bg-stone-50">
+<body>
   <div id="root"></div>
   <script type="text/babel">
-    const { useState, useEffect } = React;
+    const { useState, useEffect, useMemo } = React;
+
+    // ============================================
+    // MOTIVATIONAL QUOTES
+    // ============================================
+    const QUOTES = [
+      { text: "The body achieves what the mind believes.", author: "Napoleon Hill" },
+      { text: "Take care of your body. It's the only place you have to live.", author: "Jim Rohn" },
+      { text: "Discipline is choosing between what you want now and what you want most.", author: "Abraham Lincoln" },
+      { text: "The resistance that you fight physically in the gym and the resistance that you fight in life can only build a strong character.", author: "Arnold Schwarzenegger" },
+      { text: "Your body can stand almost anything. It's your mind that you have to convince.", author: "Anonymous" },
+      { text: "The only bad workout is the one that didn't happen.", author: "Anonymous" },
+      { text: "Strength does not come from physical capacity. It comes from an indomitable will.", author: "Mahatma Gandhi" },
+      { text: "The pain you feel today will be the strength you feel tomorrow.", author: "Anonymous" },
+      { text: "Don't count the days, make the days count.", author: "Muhammad Ali" },
+      { text: "Success usually comes to those who are too busy to be looking for it.", author: "Henry David Thoreau" },
+      { text: "The clock is ticking. Are you becoming the person you want to be?", author: "Greg Plitt" },
+      { text: "What hurts today makes you stronger tomorrow.", author: "Jay Cutler" },
+      { text: "The only way to define your limits is by going beyond them.", author: "Arthur C. Clarke" },
+      { text: "Champions aren't made in gyms. Champions are made from something deep inside them.", author: "Muhammad Ali" },
+      { text: "The hard days are what make you stronger.", author: "Aly Raisman" },
+      { text: "You don't have to be great to start, but you have to start to be great.", author: "Zig Ziglar" },
+      { text: "The body is your temple. Keep it pure and clean for the soul to reside in.", author: "B.K.S. Iyengar" },
+      { text: "Physical fitness is the first requisite of happiness.", author: "Joseph Pilates" },
+      { text: "A year from now you'll wish you had started today.", author: "Karen Lamb" },
+      { text: "The difference between try and triumph is a little umph.", author: "Marvin Phillips" },
+      { text: "Motivation gets you started. Habit keeps you going.", author: "Jim Ryun" },
+      { text: "Dead last is greater than did not finish, which trumps did not start.", author: "Anonymous" },
+      { text: "The successful warrior is the average man with laser-like focus.", author: "Bruce Lee" },
+      { text: "It never gets easier. You just get stronger.", author: "Anonymous" },
+      { text: "Suffer the pain of discipline or suffer the pain of regret.", author: "Jim Rohn" },
+    ];
 
     // ============================================
     // SUPABASE CONFIGURATION
@@ -56,37 +116,25 @@
             }
           })
         }),
-        upsert: async (record, { onConflict } = {}) => {
+        upsert: async (record) => {
           try {
             const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
               method: 'POST',
-              headers: {
-                'apikey': SUPABASE_ANON_KEY,
-                'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-                'Content-Type': 'application/json',
-                'Prefer': 'resolution=merge-duplicates'
-              },
+              headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates' },
               body: JSON.stringify(record)
             });
-            const data = res.ok ? null : await res.json();
-            return { data: null, error: res.ok ? null : data };
-          } catch (error) { return { data: null, error }; }
+            return { error: res.ok ? null : await res.json() };
+          } catch (error) { return { error }; }
         },
         insert: async (record) => {
           try {
             const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
               method: 'POST',
-              headers: {
-                'apikey': SUPABASE_ANON_KEY,
-                'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-                'Content-Type': 'application/json',
-                'Prefer': 'return=minimal'
-              },
+              headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
               body: JSON.stringify(record)
             });
-            const data = res.ok ? null : await res.json();
-            return { data: null, error: res.ok ? null : data };
-          } catch (error) { return { data: null, error }; }
+            return { error: res.ok ? null : await res.json() };
+          } catch (error) { return { error }; }
         }
       })
     };
@@ -106,14 +154,13 @@
       if (dates.length === 0) return null;
       const firstWorkoutDate = new Date(dates[0]);
       const today = new Date();
-      const diffTime = today - firstWorkoutDate;
-      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+      const diffDays = Math.floor((today - firstWorkoutDate) / (1000 * 60 * 60 * 24));
       return Math.floor(diffDays / 7) + 1;
     };
 
-    const formatDate = (date) => {
-      return new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    };
+    const formatDate = (date) => new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    
+    const formatDateLong = (date) => new Date(date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 
     const getMonday = (d) => {
       const date = new Date(d);
@@ -127,53 +174,53 @@
       1: {
         name: "Strength",
         identity: "Force Production",
-        color: "#E07A5F",
+        accent: "rust",
         warmup: ["Cat-Camel × 10", "90/90 Hip Switches × 12/side", "Ankle Wall Mobilization × 12/side", "Glute Bridge × 12", "Hip CARs × 5/side", "Scapular Pull-Ups × 6-8", "3 nasal breaths"],
         exercises: [
           { name: "Belt Squat / Landmine Hack Squat", sets: "3×6-8", rest: "3 min", note: "RPE 7-8" },
           { name: "Chest-Supported Row Machine", sets: "3×8-10", rest: "2 min", note: "Full ROM" },
           { name: "Machine Chest Press", sets: "3×8-10", rest: "2 min", note: "Control eccentric" },
-          { name: "Face Pulls (rope)", sets: "3×15", rest: "90s", note: "Light, feel it" },
+          { name: "Face Pulls", sets: "3×15", rest: "90s", note: "Light, feel it" },
           { name: "Farmer Carry", sets: "3×40m", rest: "90s", note: "Heavy as form allows" }
         ],
-        finisher: "Zone 2 Row: 15-20 min @ 128-135 bpm"
+        finisher: "Zone 2 Row · 15-20 min @ 128-135 bpm"
       },
       2: {
         name: "Cardio",
         identity: "Aerobic Base",
-        color: "#3D5A80",
+        accent: "slate",
         warmup: ["Leg swings × 10/side", "Walking lunges × 10", "Arm circles × 20", "Light rowing × 3 min"],
-        exercises: [{ name: "5K Row", sets: "1", rest: "-", note: "Target: 35:00, HR 128-135" }],
-        finisher: "Stretch: hip flexors, hamstrings, shoulders"
+        exercises: [{ name: "5K Row", sets: "1", rest: "—", note: "Target: 35:00, HR 128-135" }],
+        finisher: "Stretch · Hip flexors, hamstrings, shoulders"
       },
       3: {
         name: "Posterior",
         identity: "Pull Strength",
-        color: "#81B29A",
+        accent: "sage",
         warmup: ["Cat-Camel × 10", "Bird-Dog × 8/side", "Hip CARs × 5/side", "Band Pull-Aparts × 15", "Dead Hang × 30s", "3 nasal breaths"],
         exercises: [
           { name: "Trap Bar Deadlift", sets: "3×5", rest: "3-4 min", note: "RPE 7-8, brace hard" },
-          { name: "Lat Pulldown (neutral)", sets: "3×8-10", rest: "2 min", note: "Pause at bottom" },
+          { name: "Lat Pulldown", sets: "3×8-10", rest: "2 min", note: "Pause at bottom" },
           { name: "Incline DB Curl", sets: "2×12-15", rest: "90s", note: "Stretch at bottom" },
           { name: "Cable Woodchop", sets: "2×12/side", rest: "60s", note: "Anti-rotation focus" },
           { name: "Dead Hang", sets: "3× max", rest: "60s", note: "Decompress spine" }
         ],
-        finisher: "Zone 2 Row: 15-20 min @ 128-135 bpm"
+        finisher: "Zone 2 Row · 15-20 min @ 128-135 bpm"
       },
       4: {
         name: "Recovery",
         identity: "Mobility & Flow",
-        color: "#F2CC8F",
+        accent: "clay",
         warmup: ["Box breathing × 5 cycles"],
         exercises: [
-          { name: "Foam Roll Full Body", sets: "10 min", rest: "-", note: "Slow, breathe" },
-          { name: "90/90 Stretch", sets: "2 min/side", rest: "-", note: "Relax into it" },
-          { name: "Couch Stretch", sets: "2 min/side", rest: "-", note: "Hip flexor focus" },
-          { name: "Thread the Needle", sets: "10/side", rest: "-", note: "Thoracic rotation" },
-          { name: "Supine Spinal Twist", sets: "2 min/side", rest: "-", note: "Let gravity work" },
-          { name: "Legs Up Wall", sets: "5-10 min", rest: "-", note: "Nasal breathing" }
+          { name: "Foam Roll Full Body", sets: "10 min", rest: "—", note: "Slow, breathe" },
+          { name: "90/90 Stretch", sets: "2 min/side", rest: "—", note: "Relax into it" },
+          { name: "Couch Stretch", sets: "2 min/side", rest: "—", note: "Hip flexor focus" },
+          { name: "Thread the Needle", sets: "10/side", rest: "—", note: "Thoracic rotation" },
+          { name: "Supine Spinal Twist", sets: "2 min/side", rest: "—", note: "Let gravity work" },
+          { name: "Legs Up Wall", sets: "5-10 min", rest: "—", note: "Nasal breathing" }
         ],
-        finisher: "Optional: Light walk or Zone 2 for 20-30 min"
+        finisher: "Optional · Light walk or Zone 2 for 20-30 min"
       }
     };
 
@@ -196,41 +243,35 @@
       const latest = history[history.length - 1];
       
       return (
-        <div className="bg-white rounded-2xl p-5 shadow-sm border border-stone-100">
-          <div className="flex justify-between items-start mb-4">
+        <div className="bg-white border border-clay/50 p-6 fade-in">
+          <div className="flex justify-between items-start mb-5">
             <div>
-              <h4 className="text-xl font-semibold text-stone-800">{bench.name}</h4>
-              <p className="text-stone-500 text-base">{bench.description}</p>
-              {bench.target && <p className="text-emerald-600 font-medium mt-1">Target: {bench.target}</p>}
+              <h4 className="text-lg font-medium text-ink">{bench.name}</h4>
+              <p className="text-slate text-sm mt-0.5">{bench.description}</p>
+              {bench.target && <p className="text-sage text-sm mt-1">Target: {bench.target}</p>}
             </div>
             {latest && (
               <div className="text-right">
-                <p className="text-3xl font-bold text-stone-800">{latest.value}</p>
-                <p className="text-stone-400 text-sm">{formatDate(latest.recorded_at)}</p>
+                <p className="text-2xl font-serif text-ink">{latest.value}</p>
+                <p className="text-slate text-xs mt-1">{formatDate(latest.recorded_at)}</p>
               </div>
             )}
           </div>
           <div className="flex gap-3">
-            <input
-              type="text"
-              placeholder={bench.unit}
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              className="flex-1 px-4 py-3 text-lg rounded-xl border-2 border-stone-200 focus:border-emerald-400 focus:outline-none"
-            />
-            <button
-              onClick={() => { if (inputValue) { onSave(bench.id, inputValue); setInputValue(''); }}}
-              className="px-6 py-3 bg-emerald-500 text-white font-semibold rounded-xl active:scale-95 transition-transform"
-            >Log</button>
+            <input type="text" placeholder={bench.unit} value={inputValue} onChange={(e) => setInputValue(e.target.value)}
+              className="flex-1 px-4 py-3 bg-paper border border-clay/50 text-ink placeholder:text-slate/50 focus:outline-none focus:border-ink/30 transition-colors" />
+            <button onClick={() => { if (inputValue) { onSave(bench.id, inputValue); setInputValue(''); }}}
+              className="px-6 py-3 bg-ink text-paper font-medium hover:bg-ink/90 active:scale-[0.98] transition-all">
+              Log
+            </button>
           </div>
           {history.length > 1 && (
-            <div className="mt-4 pt-4 border-t border-stone-100">
-              <p className="text-sm text-stone-400 mb-2">History</p>
-              <div className="flex gap-4 overflow-x-auto pb-2">
-                {history.slice(-6).map((entry, i) => (
+            <div className="mt-5 pt-5 border-t border-clay/30">
+              <div className="flex gap-6 overflow-x-auto">
+                {history.slice(-5).map((entry, i) => (
                   <div key={i} className="text-center min-w-fit">
-                    <p className="font-semibold text-stone-700">{entry.value}</p>
-                    <p className="text-stone-400 text-sm">{formatDate(entry.recorded_at)}</p>
+                    <p className="font-medium text-ink">{entry.value}</p>
+                    <p className="text-slate text-xs mt-0.5">{formatDate(entry.recorded_at)}</p>
                   </div>
                 ))}
               </div>
@@ -255,6 +296,14 @@
       const [syncStatus, setSyncStatus] = useState('synced');
 
       const userId = getUserId();
+      
+      // Random quote for the session
+      const todayQuote = useMemo(() => {
+        const seed = new Date().toDateString() + selectedDay;
+        let hash = 0;
+        for (let i = 0; i < seed.length; i++) { hash = ((hash << 5) - hash) + seed.charCodeAt(i); hash |= 0; }
+        return QUOTES[Math.abs(hash) % QUOTES.length];
+      }, [selectedDay, selectedDate]);
 
       // Load Data
       useEffect(() => {
@@ -299,19 +348,19 @@
       const handleSaveWorkout = async () => {
         setSyncStatus('syncing');
         try {
-          await supabase.from('workouts').upsert({ user_id: userId, date: selectedDate, day_number: selectedDay, exercises: exerciseData, completed_at: new Date().toISOString() }, { onConflict: 'user_id,date' });
+          await supabase.from('workouts').upsert({ user_id: userId, date: selectedDate, day_number: selectedDay, exercises: exerciseData, completed_at: new Date().toISOString() });
           setWorkouts(prev => ({ ...prev, [selectedDate]: { day: selectedDay, exercises: exerciseData, completedAt: new Date().toISOString() }}));
-          setSyncStatus('synced'); showToast('Workout saved! 💪');
-        } catch (error) { setSyncStatus('error'); showToast('Error saving ❌'); }
+          setSyncStatus('synced'); showToast('Workout saved');
+        } catch (error) { setSyncStatus('error'); showToast('Error saving'); }
       };
 
       const handleSaveBiometrics = async () => {
         setSyncStatus('syncing');
         try {
-          await supabase.from('biometrics').upsert({ user_id: userId, date: selectedDate, weight: todayBiometrics.weight || null, hrv: todayBiometrics.hrv || null, resting_hr: todayBiometrics.restingHR || null, sleep: todayBiometrics.sleep || null, soreness: todayBiometrics.soreness }, { onConflict: 'user_id,date' });
+          await supabase.from('biometrics').upsert({ user_id: userId, date: selectedDate, weight: todayBiometrics.weight || null, hrv: todayBiometrics.hrv || null, resting_hr: todayBiometrics.restingHR || null, sleep: todayBiometrics.sleep || null, soreness: todayBiometrics.soreness });
           setBiometrics(prev => ({ ...prev, [selectedDate]: { ...todayBiometrics }}));
-          setSyncStatus('synced'); showToast('Biometrics logged! 📊');
-        } catch (error) { setSyncStatus('error'); showToast('Error saving ❌'); }
+          setSyncStatus('synced'); showToast('Biometrics saved');
+        } catch (error) { setSyncStatus('error'); showToast('Error saving'); }
       };
 
       const handleSaveBenchmark = async (benchmarkId, value) => {
@@ -319,8 +368,8 @@
         try {
           await supabase.from('benchmarks').insert({ user_id: userId, benchmark_id: benchmarkId, value: value, recorded_at: new Date().toISOString() });
           setBenchmarks(prev => ({ ...prev, [benchmarkId]: [...(prev[benchmarkId] || []), { value, recorded_at: new Date().toISOString() }]}));
-          setSyncStatus('synced'); showToast('Benchmark recorded! 🎯');
-        } catch (error) { setSyncStatus('error'); showToast('Error saving ❌'); }
+          setSyncStatus('synced'); showToast('Benchmark recorded');
+        } catch (error) { setSyncStatus('error'); showToast('Error saving'); }
       };
 
       const getReadinessScore = () => {
@@ -334,7 +383,7 @@
         return Math.max(0, Math.min(100, Math.round(score)));
       };
 
-      const isDeloadWeek = () => { const weekNum = getProgramWeek(workouts); if (!weekNum) return false; return weekNum % 5 === 0; };
+      const isDeloadWeek = () => { const weekNum = getProgramWeek(workouts); return weekNum ? weekNum % 5 === 0 : false; };
 
       const getWeeklyCompletion = () => {
         const weeks = [];
@@ -355,222 +404,294 @@
 
       const program = PROGRAM[selectedDay];
       const readiness = getReadinessScore();
+      const programWeek = getProgramWeek(workouts);
 
       if (isLoading) {
         return (
-          <div className="min-h-screen bg-stone-50 flex items-center justify-center">
+          <div className="min-h-screen bg-paper flex items-center justify-center">
             <div className="text-center">
-              <div className="w-16 h-16 border-4 border-emerald-200 border-t-emerald-500 rounded-full animate-spin mx-auto mb-4" />
-              <p className="text-stone-500 text-lg">Syncing with cloud...</p>
+              <div className="w-12 h-12 border-2 border-clay border-t-ink rounded-full animate-spin mx-auto mb-4" />
+              <p className="text-slate">Loading...</p>
             </div>
           </div>
         );
       }
 
       return (
-        <div className="min-h-screen bg-stone-50">
-          {toast && <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-stone-800 text-white px-6 py-3 rounded-full shadow-lg text-lg font-medium">{toast}</div>}
+        <div className="min-h-screen bg-paper">
+          {/* Toast */}
+          {toast && (
+            <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 bg-ink text-paper px-6 py-3 text-sm font-medium fade-in">
+              {toast}
+            </div>
+          )}
 
-          <header className="bg-white border-b border-stone-200 sticky top-0 z-40">
-            <div className="max-w-lg mx-auto px-4 py-4">
+          {/* Header */}
+          <header className="bg-paper border-b border-clay/50 sticky top-0 z-40">
+            <div className="max-w-xl mx-auto px-6 py-5">
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="flex items-center gap-2">
-                    <h1 className="text-2xl font-bold text-stone-800">Longevity</h1>
-                    <span className={`w-2 h-2 rounded-full ${syncStatus === 'synced' ? 'bg-emerald-500' : syncStatus === 'syncing' ? 'bg-amber-500 animate-pulse' : 'bg-red-500'}`} />
-                  </div>
-                  <p className="text-stone-500">
-                    {getProgramWeek(workouts) ? <>Week {getProgramWeek(workouts)} {isDeloadWeek() && <span className="text-amber-500 font-medium"> • Deload</span>}</> : 'Log your first workout to start'}
-                    <span className="text-emerald-500 text-sm ml-2">☁️</span>
+                  <h1 className="text-2xl font-serif text-ink tracking-tight">Longevity</h1>
+                  <p className="text-slate text-sm mt-0.5">
+                    {programWeek ? (
+                      <>Week {programWeek}{isDeloadWeek() && <span className="text-rust ml-2">· Deload</span>}</>
+                    ) : 'Begin your journey'}
                   </p>
                 </div>
-                {readiness && <div className={`w-14 h-14 rounded-full flex items-center justify-center text-xl font-bold text-white ${readiness >= 80 ? 'bg-emerald-500' : readiness >= 60 ? 'bg-amber-500' : 'bg-rose-500'}`}>{readiness}</div>}
+                <div className="flex items-center gap-3">
+                  <span className={`w-2 h-2 rounded-full ${syncStatus === 'synced' ? 'bg-sage' : syncStatus === 'syncing' ? 'bg-rust animate-pulse' : 'bg-red-500'}`} />
+                  {readiness && (
+                    <div className={`w-12 h-12 rounded-full flex items-center justify-center text-lg font-serif text-white ${readiness >= 80 ? 'bg-sage' : readiness >= 60 ? 'bg-rust' : 'bg-slate'}`}>
+                      {readiness}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </header>
 
-          <nav className="bg-white border-b border-stone-200 sticky top-[73px] z-30">
-            <div className="max-w-lg mx-auto px-2">
+          {/* Navigation */}
+          <nav className="bg-paper border-b border-clay/50 sticky top-[85px] z-30">
+            <div className="max-w-xl mx-auto px-6">
               <div className="flex">
-                {[{ id: 'log', label: 'Log', icon: '✏️' }, { id: 'dashboard', label: 'Stats', icon: '📊' }, { id: 'biometrics', label: 'Bio', icon: '❤️' }, { id: 'benchmarks', label: 'Tests', icon: '🎯' }].map(tab => (
-                  <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex-1 py-4 text-center transition-colors ${activeTab === tab.id ? 'text-emerald-600 border-b-2 border-emerald-500 font-semibold' : 'text-stone-400'}`}>
-                    <span className="text-xl block">{tab.icon}</span>
-                    <span className="text-sm">{tab.label}</span>
+                {[{ id: 'log', label: 'Log' }, { id: 'dashboard', label: 'Progress' }, { id: 'biometrics', label: 'Biometrics' }, { id: 'benchmarks', label: 'Benchmarks' }].map(tab => (
+                  <button key={tab.id} onClick={() => setActiveTab(tab.id)} 
+                    className={`flex-1 py-4 text-sm font-medium transition-colors border-b-2 ${activeTab === tab.id ? 'text-ink border-ink' : 'text-slate border-transparent hover:text-ink'}`}>
+                    {tab.label}
                   </button>
                 ))}
               </div>
             </div>
           </nav>
 
-          <main className="max-w-lg mx-auto px-4 py-6 pb-24">
+          {/* Main Content */}
+          <main className="max-w-xl mx-auto px-6 py-8 pb-24">
+            
+            {/* LOG TAB */}
             {activeTab === 'log' && (
-              <div className="space-y-6">
-                <div className="bg-white rounded-2xl p-4 shadow-sm">
-                  <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="w-full text-xl font-medium text-stone-800 bg-transparent focus:outline-none" />
+              <div className="space-y-8 fade-in">
+                {/* Motivational Quote */}
+                <div className="text-center py-6 quote-fade">
+                  <p className="font-serif text-xl text-ink italic leading-relaxed">"{todayQuote.text}"</p>
+                  <p className="text-slate text-sm mt-3">— {todayQuote.author}</p>
                 </div>
 
-                <div className="grid grid-cols-4 gap-3">
+                {/* Date */}
+                <div className="text-center">
+                  <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)}
+                    className="text-center text-lg font-medium text-ink bg-transparent focus:outline-none cursor-pointer" />
+                  <p className="text-slate text-sm mt-1">{formatDateLong(selectedDate)}</p>
+                </div>
+
+                {/* Day Selector */}
+                <div className="grid grid-cols-4 gap-2">
                   {[1, 2, 3, 4].map(day => (
-                    <button key={day} onClick={() => setSelectedDay(day)} className={`py-4 rounded-2xl text-center transition-all ${selectedDay === day ? 'text-white shadow-lg scale-105' : 'bg-white text-stone-600 shadow-sm'}`} style={selectedDay === day ? { backgroundColor: PROGRAM[day].color } : {}}>
-                      <span className="text-2xl font-bold block">{day}</span>
-                      <span className="text-sm opacity-80">{PROGRAM[day].name}</span>
+                    <button key={day} onClick={() => setSelectedDay(day)}
+                      className={`py-4 border transition-all ${selectedDay === day ? 'bg-ink text-paper border-ink' : 'bg-white text-ink border-clay/50 hover:border-ink/30'}`}>
+                      <span className="text-xl font-serif block">{day}</span>
+                      <span className="text-xs opacity-70">{PROGRAM[day].name}</span>
                     </button>
                   ))}
                 </div>
 
-                <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-                  <div className="p-5" style={{ backgroundColor: program.color }}>
-                    <h2 className="text-2xl font-bold text-white">{program.name}</h2>
-                    <p className="text-white/80">{program.identity}</p>
+                {/* Workout Card */}
+                <div className="bg-white border border-clay/50">
+                  {/* Header */}
+                  <div className="p-6 border-b border-clay/30">
+                    <p className="text-xs uppercase tracking-widest text-slate mb-1">{program.identity}</p>
+                    <h2 className="text-2xl font-serif text-ink">{program.name}</h2>
                   </div>
 
-                  <div className="p-5 border-b border-stone-100">
-                    <h3 className="text-lg font-semibold text-stone-800 mb-3">🔥 Warm-Up</h3>
-                    <div className="space-y-2">{program.warmup.map((item, i) => <p key={i} className="text-stone-600 text-base">{item}</p>)}</div>
+                  {/* Warmup */}
+                  <div className="p-6 border-b border-clay/30 bg-paper/50">
+                    <p className="text-xs uppercase tracking-widest text-slate mb-3">Warm-Up</p>
+                    <div className="space-y-1.5">
+                      {program.warmup.map((item, i) => <p key={i} className="text-ink/80 text-sm">{item}</p>)}
+                    </div>
                   </div>
 
-                  <div className="p-5">
-                    <h3 className="text-lg font-semibold text-stone-800 mb-4">💪 Exercises</h3>
+                  {/* Exercises */}
+                  <div className="p-6">
+                    <p className="text-xs uppercase tracking-widest text-slate mb-4">Exercises</p>
                     <div className="space-y-6">
                       {program.exercises.map((ex, i) => (
-                        <div key={i} className="border-l-4 pl-4" style={{ borderColor: program.color }}>
-                          <div className="flex items-start justify-between">
+                        <div key={i} className="pb-6 border-b border-clay/20 last:border-0 last:pb-0">
+                          <div className="flex items-start justify-between mb-3">
                             <div className="flex-1">
-                              <h4 className="text-lg font-medium text-stone-800">{ex.name}</h4>
-                              <p className="text-stone-500">{ex.sets} • Rest {ex.rest}</p>
-                              {ex.note && <p className="text-emerald-600 text-sm mt-1">{ex.note}</p>}
+                              <h4 className="font-medium text-ink">{ex.name}</h4>
+                              <p className="text-slate text-sm">{ex.sets} · Rest {ex.rest}</p>
+                              {ex.note && <p className="text-sage text-sm mt-1">{ex.note}</p>}
                             </div>
-                            <input type="checkbox" checked={exerciseData[ex.name]?.completed || false} onChange={(e) => setExerciseData(prev => ({ ...prev, [ex.name]: { ...prev[ex.name], completed: e.target.checked }}))} className="w-7 h-7 rounded-lg accent-emerald-500 mt-1" />
+                            <label className="relative cursor-pointer">
+                              <input type="checkbox" checked={exerciseData[ex.name]?.completed || false}
+                                onChange={(e) => setExerciseData(prev => ({ ...prev, [ex.name]: { ...prev[ex.name], completed: e.target.checked }}))}
+                                className="sr-only peer" />
+                              <div className="w-6 h-6 border-2 border-clay peer-checked:bg-ink peer-checked:border-ink transition-all flex items-center justify-center">
+                                <svg className="w-3 h-3 text-paper opacity-0 peer-checked:opacity-100" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                </svg>
+                              </div>
+                            </label>
                           </div>
-                          <div className="flex gap-3 mt-3">
-                            <input type="number" placeholder="Weight (kg)" value={exerciseData[ex.name]?.weight || ''} onChange={(e) => setExerciseData(prev => ({ ...prev, [ex.name]: { ...prev[ex.name], weight: e.target.value }}))} className="flex-1 px-4 py-3 text-base rounded-xl border-2 border-stone-200 focus:border-emerald-400 focus:outline-none" />
-                            <input type="number" placeholder="Reps" value={exerciseData[ex.name]?.reps || ''} onChange={(e) => setExerciseData(prev => ({ ...prev, [ex.name]: { ...prev[ex.name], reps: e.target.value }}))} className="w-24 px-4 py-3 text-base rounded-xl border-2 border-stone-200 focus:border-emerald-400 focus:outline-none" />
+                          <div className="flex gap-2">
+                            <input type="number" placeholder="kg" value={exerciseData[ex.name]?.weight || ''}
+                              onChange={(e) => setExerciseData(prev => ({ ...prev, [ex.name]: { ...prev[ex.name], weight: e.target.value }}))}
+                              className="flex-1 px-3 py-2.5 bg-paper border border-clay/50 text-ink text-sm placeholder:text-slate/50 focus:outline-none focus:border-ink/30" />
+                            <input type="number" placeholder="reps" value={exerciseData[ex.name]?.reps || ''}
+                              onChange={(e) => setExerciseData(prev => ({ ...prev, [ex.name]: { ...prev[ex.name], reps: e.target.value }}))}
+                              className="w-20 px-3 py-2.5 bg-paper border border-clay/50 text-ink text-sm placeholder:text-slate/50 focus:outline-none focus:border-ink/30" />
                           </div>
                         </div>
                       ))}
                     </div>
                   </div>
 
-                  {program.finisher && <div className="p-5 bg-stone-50 border-t border-stone-100"><p className="text-stone-600 text-base">🏁 <span className="font-medium">{program.finisher}</span></p></div>}
+                  {/* Finisher */}
+                  {program.finisher && (
+                    <div className="p-6 bg-paper/50 border-t border-clay/30">
+                      <p className="text-xs uppercase tracking-widest text-slate mb-1">Finisher</p>
+                      <p className="text-ink">{program.finisher}</p>
+                    </div>
+                  )}
                 </div>
 
-                <button onClick={handleSaveWorkout} disabled={syncStatus === 'syncing'} className="w-full py-4 rounded-2xl text-xl font-bold text-white shadow-lg active:scale-98 transition-transform disabled:opacity-50" style={{ backgroundColor: program.color }}>
+                {/* Save Button */}
+                <button onClick={handleSaveWorkout} disabled={syncStatus === 'syncing'}
+                  className="w-full py-4 bg-ink text-paper font-medium hover:bg-ink/90 active:scale-[0.99] transition-all disabled:opacity-50">
                   {syncStatus === 'syncing' ? 'Saving...' : 'Save Workout'}
                 </button>
               </div>
             )}
 
+            {/* DASHBOARD TAB */}
             {activeTab === 'dashboard' && (
-              <div className="space-y-6">
-                <div className="bg-white rounded-2xl p-5 shadow-sm">
-                  <h3 className="text-lg font-semibold text-stone-800 mb-4">📅 Weekly Progress</h3>
-                  <div className="space-y-4">
+              <div className="space-y-8 fade-in">
+                <div className="bg-white border border-clay/50 p-6">
+                  <p className="text-xs uppercase tracking-widest text-slate mb-4">Weekly Progress</p>
+                  <div className="space-y-3">
                     {getWeeklyCompletion().map((week, wi) => (
-                      <div key={wi} className="flex items-center gap-3">
-                        <span className="text-stone-400 text-sm w-16">{week.weekStart}</span>
+                      <div key={wi} className="flex items-center gap-4">
+                        <span className="text-slate text-sm w-14">{week.weekStart}</span>
                         <div className="flex gap-1 flex-1">
                           {week.days.map((day, di) => (
-                            <div key={di} className={`w-9 h-9 rounded-lg flex items-center justify-center text-sm font-semibold ${day.completed ? 'text-white' : 'bg-stone-100 text-stone-300'}`} style={day.completed ? { backgroundColor: PROGRAM[day.day]?.color } : {}}>
+                            <div key={di} className={`w-8 h-8 flex items-center justify-center text-xs font-medium ${day.completed ? 'bg-ink text-paper' : 'bg-clay/30 text-slate'}`}>
                               {day.completed ? day.day : '·'}
                             </div>
                           ))}
                         </div>
-                        <span className={`font-bold text-lg w-8 text-right ${week.completedCount >= 4 ? 'text-emerald-500' : 'text-stone-400'}`}>{week.completedCount}</span>
+                        <span className={`font-serif text-lg w-6 text-right ${week.completedCount >= 4 ? 'text-ink' : 'text-slate'}`}>{week.completedCount}</span>
                       </div>
                     ))}
                   </div>
                 </div>
 
-                <div className="bg-white rounded-2xl p-5 shadow-sm">
-                  <h3 className="text-lg font-semibold text-stone-800 mb-4">🕐 Recent</h3>
+                <div className="bg-white border border-clay/50 p-6">
+                  <p className="text-xs uppercase tracking-widest text-slate mb-4">Recent Workouts</p>
                   <div className="space-y-3">
                     {Object.entries(workouts).sort((a, b) => new Date(b[0]) - new Date(a[0])).slice(0, 8).map(([date, workout]) => (
-                      <div key={date} className="flex items-center justify-between py-2">
+                      <div key={date} className="flex items-center justify-between py-2 border-b border-clay/20 last:border-0">
                         <div className="flex items-center gap-3">
-                          <span className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold" style={{ backgroundColor: PROGRAM[workout.day]?.color }}>{workout.day}</span>
-                          <span className="text-stone-700 font-medium">{PROGRAM[workout.day]?.name}</span>
+                          <span className="w-8 h-8 bg-ink text-paper flex items-center justify-center font-serif">{workout.day}</span>
+                          <span className="text-ink">{PROGRAM[workout.day]?.name}</span>
                         </div>
-                        <span className="text-stone-400">{formatDate(date)}</span>
+                        <span className="text-slate text-sm">{formatDate(date)}</span>
                       </div>
                     ))}
-                    {Object.keys(workouts).length === 0 && <p className="text-stone-400 text-center py-8">No workouts logged yet</p>}
+                    {Object.keys(workouts).length === 0 && <p className="text-slate text-center py-8">No workouts logged yet</p>}
                   </div>
                 </div>
               </div>
             )}
 
+            {/* BIOMETRICS TAB */}
             {activeTab === 'biometrics' && (
-              <div className="space-y-6">
-                <div className="bg-white rounded-2xl p-5 shadow-sm space-y-6">
-                  <h3 className="text-lg font-semibold text-stone-800">📋 Daily Check-In</h3>
-                  <div>
-                    <label className="text-stone-500 text-base block mb-2">Body Weight (kg)</label>
-                    <input type="number" step="0.1" value={todayBiometrics.weight} onChange={(e) => setTodayBiometrics(prev => ({ ...prev, weight: e.target.value }))} placeholder="e.g. 75.5" className="w-full px-4 py-4 text-xl rounded-xl border-2 border-stone-200 focus:border-emerald-400 focus:outline-none" />
+              <div className="space-y-8 fade-in">
+                <div className="bg-white border border-clay/50 p-6 space-y-6">
+                  <p className="text-xs uppercase tracking-widest text-slate">Daily Check-In</p>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-slate text-sm block mb-2">Weight (kg)</label>
+                      <input type="number" step="0.1" value={todayBiometrics.weight} onChange={(e) => setTodayBiometrics(prev => ({ ...prev, weight: e.target.value }))}
+                        className="w-full px-4 py-3 bg-paper border border-clay/50 text-ink placeholder:text-slate/50 focus:outline-none focus:border-ink/30" placeholder="75.5" />
+                    </div>
+                    <div>
+                      <label className="text-slate text-sm block mb-2">HRV (ms)</label>
+                      <input type="number" value={todayBiometrics.hrv} onChange={(e) => setTodayBiometrics(prev => ({ ...prev, hrv: e.target.value }))}
+                        className="w-full px-4 py-3 bg-paper border border-clay/50 text-ink placeholder:text-slate/50 focus:outline-none focus:border-ink/30" placeholder="45" />
+                    </div>
+                    <div>
+                      <label className="text-slate text-sm block mb-2">Resting HR</label>
+                      <input type="number" value={todayBiometrics.restingHR} onChange={(e) => setTodayBiometrics(prev => ({ ...prev, restingHR: e.target.value }))}
+                        className="w-full px-4 py-3 bg-paper border border-clay/50 text-ink placeholder:text-slate/50 focus:outline-none focus:border-ink/30" placeholder="58" />
+                    </div>
+                    <div>
+                      <label className="text-slate text-sm block mb-2">Sleep (hrs)</label>
+                      <input type="number" step="0.5" value={todayBiometrics.sleep} onChange={(e) => setTodayBiometrics(prev => ({ ...prev, sleep: e.target.value }))}
+                        className="w-full px-4 py-3 bg-paper border border-clay/50 text-ink placeholder:text-slate/50 focus:outline-none focus:border-ink/30" placeholder="7.5" />
+                    </div>
                   </div>
+
                   <div>
-                    <label className="text-stone-500 text-base block mb-2">HRV (ms)</label>
-                    <input type="number" value={todayBiometrics.hrv} onChange={(e) => setTodayBiometrics(prev => ({ ...prev, hrv: e.target.value }))} placeholder="e.g. 45" className="w-full px-4 py-4 text-xl rounded-xl border-2 border-stone-200 focus:border-emerald-400 focus:outline-none" />
-                  </div>
-                  <div>
-                    <label className="text-stone-500 text-base block mb-2">Resting HR (bpm)</label>
-                    <input type="number" value={todayBiometrics.restingHR} onChange={(e) => setTodayBiometrics(prev => ({ ...prev, restingHR: e.target.value }))} placeholder="e.g. 58" className="w-full px-4 py-4 text-xl rounded-xl border-2 border-stone-200 focus:border-emerald-400 focus:outline-none" />
-                  </div>
-                  <div>
-                    <label className="text-stone-500 text-base block mb-2">Sleep (hours)</label>
-                    <input type="number" step="0.5" value={todayBiometrics.sleep} onChange={(e) => setTodayBiometrics(prev => ({ ...prev, sleep: e.target.value }))} placeholder="e.g. 7.5" className="w-full px-4 py-4 text-xl rounded-xl border-2 border-stone-200 focus:border-emerald-400 focus:outline-none" />
-                  </div>
-                  <div>
-                    <label className="text-stone-500 text-base block mb-3">Soreness (1-5)</label>
-                    <div className="grid grid-cols-2 gap-3">
+                    <label className="text-slate text-sm block mb-3">Soreness (1-5)</label>
+                    <div className="grid grid-cols-2 gap-2">
                       {SORENESS_AREAS.map(area => (
-                        <div key={area} className="flex items-center justify-between bg-stone-50 rounded-xl px-4 py-3">
-                          <span className="text-stone-700">{area}</span>
-                          <select value={todayBiometrics.soreness[area] || ''} onChange={(e) => setTodayBiometrics(prev => ({ ...prev, soreness: { ...prev.soreness, [area]: e.target.value }}))} className="w-16 text-center py-2 rounded-lg border-2 border-stone-200 focus:border-emerald-400 focus:outline-none text-lg font-medium">
-                            <option value="">-</option>
+                        <div key={area} className="flex items-center justify-between bg-paper px-3 py-2.5 border border-clay/30">
+                          <span className="text-ink text-sm">{area}</span>
+                          <select value={todayBiometrics.soreness[area] || ''} onChange={(e) => setTodayBiometrics(prev => ({ ...prev, soreness: { ...prev.soreness, [area]: e.target.value }}))}
+                            className="w-14 text-center py-1 bg-white border border-clay/50 text-ink text-sm focus:outline-none">
+                            <option value="">—</option>
                             {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n}</option>)}
                           </select>
                         </div>
                       ))}
                     </div>
                   </div>
-                  <button onClick={handleSaveBiometrics} disabled={syncStatus === 'syncing'} className="w-full py-4 bg-emerald-500 text-white text-xl font-bold rounded-xl active:scale-98 transition-transform disabled:opacity-50">
+
+                  <button onClick={handleSaveBiometrics} disabled={syncStatus === 'syncing'}
+                    className="w-full py-4 bg-ink text-paper font-medium hover:bg-ink/90 active:scale-[0.99] transition-all disabled:opacity-50">
                     {syncStatus === 'syncing' ? 'Saving...' : 'Save Biometrics'}
                   </button>
                 </div>
 
-                <div className="bg-white rounded-2xl p-5 shadow-sm">
-                  <h3 className="text-lg font-semibold text-stone-800 mb-4">📊 Recent Data</h3>
+                <div className="bg-white border border-clay/50 p-6">
+                  <p className="text-xs uppercase tracking-widest text-slate mb-4">Recent Data</p>
                   <div className="space-y-3">
                     {Object.entries(biometrics).sort((a, b) => new Date(b[0]) - new Date(a[0])).slice(0, 7).map(([date, data]) => (
-                      <div key={date} className="flex items-center justify-between py-2 border-b border-stone-100 last:border-0">
-                        <span className="text-stone-500">{formatDate(date)}</span>
-                        <div className="flex gap-4 text-base">
-                          {data.weight && <span className="text-stone-700">{data.weight} kg</span>}
-                          {data.hrv && <span className="text-emerald-600">HRV {data.hrv}</span>}
-                          {data.sleep && <span className="text-blue-500">{data.sleep}h</span>}
+                      <div key={date} className="flex items-center justify-between py-2 border-b border-clay/20 last:border-0">
+                        <span className="text-slate text-sm">{formatDate(date)}</span>
+                        <div className="flex gap-4 text-sm">
+                          {data.weight && <span className="text-ink">{data.weight}kg</span>}
+                          {data.hrv && <span className="text-sage">HRV {data.hrv}</span>}
+                          {data.sleep && <span className="text-slate">{data.sleep}h</span>}
                         </div>
                       </div>
                     ))}
-                    {Object.keys(biometrics).length === 0 && <p className="text-stone-400 text-center py-4">No biometrics logged yet</p>}
+                    {Object.keys(biometrics).length === 0 && <p className="text-slate text-center py-4">No data yet</p>}
                   </div>
                 </div>
               </div>
             )}
 
+            {/* BENCHMARKS TAB */}
             {activeTab === 'benchmarks' && (
-              <div className="space-y-6">
-                <div className="bg-amber-50 rounded-2xl p-4 flex items-center gap-3 border border-amber-200">
-                  <span className="text-2xl">📌</span>
-                  <p className="text-amber-800">Run benchmarks <span className="font-semibold">last week of each month</span> (before deload)</p>
+              <div className="space-y-6 fade-in">
+                <div className="bg-paper border border-rust/30 p-4">
+                  <p className="text-rust text-sm">Test benchmarks on the <span className="font-medium">last week of each month</span>, before deload.</p>
                 </div>
                 {BENCHMARKS.map(bench => <BenchmarkCard key={bench.id} bench={bench} history={benchmarks[bench.id] || []} onSave={handleSaveBenchmark} />)}
               </div>
             )}
           </main>
 
-          <footer className="fixed bottom-0 left-0 right-0 bg-white border-t border-stone-200 py-3 px-4">
-            <div className="max-w-lg mx-auto flex items-center justify-center gap-4 text-stone-400 text-sm">
-              <span>Zone 2: 128-135 bpm</span><span>•</span><span>Deload: Week 5</span><span>•</span><span>Age: 43</span>
+          {/* Footer */}
+          <footer className="fixed bottom-0 left-0 right-0 bg-paper border-t border-clay/50 py-4 px-6">
+            <div className="max-w-xl mx-auto flex items-center justify-center gap-6 text-slate text-xs">
+              <span>Zone 2: 128-135 bpm</span>
+              <span className="w-1 h-1 rounded-full bg-clay" />
+              <span>Deload: Week 5</span>
+              <span className="w-1 h-1 rounded-full bg-clay" />
+              <span>Age 43</span>
             </div>
           </footer>
         </div>
